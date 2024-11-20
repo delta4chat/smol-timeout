@@ -23,7 +23,7 @@
 //! ```rust
 //! use async_io::Timer;
 //! # use futures_lite::future;
-//! use smol_timeout::TimeoutExt;
+//! use smoltimeout::TimeoutExt;
 //! use std::time::Duration;
 //!
 //! # future::block_on(async {
@@ -72,7 +72,7 @@ pin_project! {
     /// ```rust
     /// use async_io::Timer;
     /// # use futures_lite::future;
-    /// use smol_timeout::TimeoutExt;
+    /// use smoltimeout::TimeoutExt;
     /// use std::time::Duration;
     ///
     /// # future::block_on(async {
@@ -118,7 +118,7 @@ pub trait TimeoutExt: Future {
     /// ```rust
     /// use async_io::Timer;
     /// # use futures_lite::future;
-    /// use smol_timeout::TimeoutExt;
+    /// use smoltimeout::TimeoutExt;
     /// use std::time::Duration;
     ///
     /// # future::block_on(async {
@@ -164,12 +164,12 @@ impl<Fut: Future> Future for Timeout<Fut> {
     fn poll(self: Pin<&mut Self>, ctx: &mut Context) -> Poll<Self::Output> {
         let this = self.project();
 
-        if this.timer.poll(ctx).is_ready() {
-            return Poll::Ready(None);
-        }
-
         if let Poll::Ready(output) = this.future.poll(ctx) {
             return Poll::Ready(Some(output));
+        }
+
+        if this.timer.poll(ctx).is_ready() {
+            return Poll::Ready(None);
         }
 
         Poll::Pending

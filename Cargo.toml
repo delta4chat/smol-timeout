@@ -1,15 +1,14 @@
 [package]
-name = "smol-timeout"
+name = "smoltimeout"
 description = "A way to poll a future until it or a timer completes."
-version = "0.6.0"
-homepage = "https://github.com/r3v2d0g/smol-timeout"
-repository = "https://github.com/r3v2d0g/smol-timeout"
-documentation = "https://docs.rs/smol-timeout"
+version = "0.6.1"
+repository = "https://github.com/delta4chat/smol-timeout"
+documentation = "https://docs.rs/smoltimeout"
 keywords = ["async", "await", "future", "futures"]
 categories = ["asynchronous", "concurrency"]
 readme = "README.md"
 license = "MPL-2.0"
-authors = ["Matthieu Le brazidec (r3v2d0g) <r3v2d0g@jesus.gg>"]
+authors = ["Matthieu Le brazidec (r3v2d0g) <r3v2d0g@jesus.gg>", "Delta4 <156182500+delta4chat@users.noreply.github.com>"]
 edition = "2018"
 
 [dependencies]
