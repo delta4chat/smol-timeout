@@ -10,7 +10,8 @@
  * │                                       Configuration                                        │ *
 \* └────────────────────────────────────────────────────────────────────────────────────────────┘ */
 
-#![no_std]
+// This is completely useless: due to this library depends async-io (it is not optional), and async-io uses std. so the final generated native code is still linked to std.
+//#![no_std]
 
 /* ┌────────────────────────────────────────────────────────────────────────────────────────────┐ *\
  * │                                       Documentation                                        │ *
@@ -19,33 +20,7 @@
 //! A way to poll a future until it or a timer completes.
 //!
 //! ## Example
-//!
-//! ```rust
-//! use async_io::Timer;
-//! # use futures_lite::future;
-//! use smoltimeout::TimeoutExt;
-//! use std::time::Duration;
-//!
-//! # future::block_on(async {
-//! #
-//! let foo = async {
-//!     Timer::after(Duration::from_millis(250)).await;
-//!     24
-//! };
-//!
-//! let foo = foo.timeout(Duration::from_millis(100));
-//! assert_eq!(foo.await, None);
-//!
-//! let bar = async {
-//!     Timer::after(Duration::from_millis(100)).await;
-//!     42
-//! };
-//!
-//! let bar = bar.timeout(Duration::from_millis(250));
-//! assert_eq!(bar.await, Some(42));
-//! #
-//! # });
-//! ```
+//! see [`TimeoutExt::timeout`] and [`TimeoutExt::deadline`].
 
 /* ┌────────────────────────────────────────────────────────────────────────────────────────────┐ *\
  * │                                          Imports                                           │ *
@@ -55,47 +30,21 @@ use async_io::Timer;
 use core::future::Future;
 use core::pin::Pin;
 use core::task::{Context, Poll};
-use core::time::Duration;
+use std::time::{Instant, Duration};
 use pin_project_lite::pin_project;
 
 /* ┌────────────────────────────────────────────────────────────────────────────────────────────┐ *\
- * │                                    struct Timeout<Fut>                                     │ *
+ * │                                    struct Timed<Fut>                                     │ *
 \* └────────────────────────────────────────────────────────────────────────────────────────────┘ */
 
 pin_project! {
-    #[derive(Debug)]
-    /// A future polling both another future and a [`Timer`] that will complete after a specified
-    /// timeout, and returning the future's output or [`None`] if the timer completes first.
+    /// A helper that polling both inner Future, and a [`Timer`] that will complete after a specified
+    /// timeout or deadline.
     ///
     /// ## Example
-    ///
-    /// ```rust
-    /// use async_io::Timer;
-    /// # use futures_lite::future;
-    /// use smoltimeout::TimeoutExt;
-    /// use std::time::Duration;
-    ///
-    /// # future::block_on(async {
-    /// #
-    /// let foo = async {
-    ///     Timer::after(Duration::from_millis(250)).await;
-    ///     24
-    /// };
-    ///
-    /// let foo = foo.timeout(Duration::from_millis(100));
-    /// assert_eq!(foo.await, None);
-    ///
-    /// let bar = async {
-    ///     Timer::after(Duration::from_millis(100)).await;
-    ///     42
-    /// };
-    ///
-    /// let bar = bar.timeout(Duration::from_millis(250));
-    /// assert_eq!(bar.await, Some(42));
-    /// #
-    /// # })
-    /// ```
-    pub struct Timeout<Fut: Future> {
+    /// see [`TimeoutExt::timeout`] and [`TimeoutExt::deadline`].
+    #[derive(Debug)]
+    pub struct Timed<Fut: Future> {
         #[pin]
         future: Fut,
         #[pin]
@@ -108,10 +57,10 @@ pin_project! {
 \* └────────────────────────────────────────────────────────────────────────────────────────────┘ */
 
 /// An extension trait for [`Future`]s that provides a way to create [`Timeout`]s.
-pub trait TimeoutExt: Future {
-    /// Given a [`Duration`], creates and returns a new [`Timeout`] that will poll both the future
-    /// and a [`Timer`] that will complete after the provided duration, and return the future's
-    /// output or [`None`] if the timer completes first.
+pub trait TimedExt: Future {
+    /// Given a [`Duration`], creates and returns a new [`Timed`] that will poll both the Future, and a [`Timer`] that will complete after the provided duration.
+    /// * first polling the Future, returns it's output if any.
+    /// * then polling the Timer, and fallback to [`None`] if the Timer completes.
     ///
     /// ## Example
     ///
@@ -123,42 +72,103 @@ pub trait TimeoutExt: Future {
     ///
     /// # future::block_on(async {
     /// #
+    /// let mut timer = Timer::after(Duration::from_millis(250));
     /// let foo = async {
-    ///     Timer::after(Duration::from_millis(250)).await;
+    ///     timer.await;
     ///     24
-    /// };
-    ///
-    /// let foo = foo.timeout(Duration::from_millis(100));
+    /// }.timeout(Duration::from_millis(100));
     /// assert_eq!(foo.await, None);
     ///
-    /// let bar = async {
-    ///     Timer::after(Duration::from_millis(100)).await;
+    /// timer = Timer::after(Duration::from_millis(100));
+    /// let bar = async move {
+    ///     timer.await;
     ///     42
-    /// };
-    ///
-    /// let bar = bar.timeout(Duration::from_millis(250));
+    /// }.timeout(Duration::from_millis(250));
     /// assert_eq!(bar.await, Some(42));
+    ///
+    /// timer = Timer::after(Duration::from_millis(50));
+    /// let mod_of_delta4 = async move {
+    ///     timer.await;
+    ///     (21*2) as f64
+    /// }.timeout(Duration::from_millis(0));
+    /// Timer::after(Duration::from_millis(100)).await;
+    /// assert_eq!(mod_of_delta4.await, Some(42.0));
     /// #
     /// # })
     /// ```
-    fn timeout(self, after: Duration) -> Timeout<Self>
+    fn timeout(self, after: Duration) -> Timed<Self>
     where
         Self: Sized,
     {
-        Timeout {
+        Timed {
             future: self,
             timer: Timer::after(after),
         }
     }
+
+    /// Given a [`Instant`], creates and returns a new [`Timed`] that will poll both the Future
+    /// and a [`Timer`] that will complete after the provided deadline.
+    /// * first polling the Future, returns it's output if any.
+    /// * then polling the Timer, and fallback to [`None`] if the Timer completes.
+    ///
+    /// ## Example
+    ///
+    /// ```rust
+    /// use async_io::Timer;
+    /// # use futures_lite::future;
+    /// use smoltimeout::TimeoutExt;
+    /// use std::time::{Instant, Duration};
+    ///
+    /// # future::block_on(async {
+    /// #
+    /// let mut timer = Timer::after(Duration::from_millis(250));
+    /// let foo = async move {
+    ///     timer.await;
+    ///     24
+    /// }.deadline(Instant::now() + Duration::from_millis(100));
+    /// assert_eq!(foo.await, None);
+    ///
+    /// timer = Timer::after(Duration::from_millis(100));
+    /// let bar = async move {
+    ///     timer.await;
+    ///     42
+    /// }.deadline(Instant::now() + Duration::from_millis(250));
+    /// assert_eq!(bar.await, Some(42));
+    ///
+    /// timer = Timer::after(Duration::from_millis(50));
+    /// let mod_of_delta4 = async move {
+    ///     timer.await;
+    ///     (21*2) as f64
+    /// }.deadline(Instant::now());
+    /// Timer::after(Duration::from_millis(100)).await;
+    /// assert_eq!(mod_of_delta4.await, Some(42.0));
+    /// #
+    /// # })
+    /// ```
+    fn deadline(self, deadline: Instant) -> Timed<Self>
+    where
+        Self: Sized,
+    {
+        Timed {
+            future: self,
+            timer: Timer::at(deadline),
+        }
+    }
 }
 
-impl<Fut: Future> TimeoutExt for Fut {}
+impl<Fut: Future> TimedExt for Fut {}
+
+/// for provide compatibly to older versions.
+pub use {
+    TimedExt as TimeoutExt,
+    Timed as Timeout,
+};
 
 /* ┌────────────────────────────────────────────────────────────────────────────────────────────┐ *\
  * │                                impl Future for Timeout<Fut>                                │ *
 \* └────────────────────────────────────────────────────────────────────────────────────────────┘ */
 
-impl<Fut: Future> Future for Timeout<Fut> {
+impl<Fut: Future> Future for Timed<Fut> {
     type Output = Option<Fut::Output>;
 
     fn poll(self: Pin<&mut Self>, ctx: &mut Context) -> Poll<Self::Output> {

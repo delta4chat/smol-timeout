@@ -1,7 +1,7 @@
 [package]
 name = "smoltimeout"
 description = "A way to poll a future until it or a timer completes."
-version = "0.6.2"
+version = "0.6.3"
 repository = "https://github.com/delta4chat/smol-timeout"
 documentation = "https://docs.rs/smoltimeout"
 keywords = ["async", "await", "future", "futures"]
