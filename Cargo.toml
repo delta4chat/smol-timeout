@@ -12,8 +12,8 @@ authors = ["Matthieu Le brazidec (r3v2d0g) <r3v2d0g@jesus.gg>", "Delta4 <1561825
 edition = "2021"
 
 [dependencies]
-async-io = "2.4.0"
-pin-project-lite = "0.2.15"
+async-io = "2.4.1"
+pin-project-lite = "0.2.16"
 
 [dev-dependencies]
-futures-lite = "2.5.0"
+futures-lite = "2.6.0"
